@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forest-Eval</title>
+    <style>
+        :root { --primary-color: #2e7d32; --accent-color: #e91e63; --bg-color: #f0f4f8; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; text-align: center; background-color: var(--bg-color); color: #333; margin: 0; padding: 20px; }
+        .container { max-width: 700px; margin: 0 auto; background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        h1 { color: var(--primary-color); font-size: 1.5rem; margin-bottom: 20px; }
+        
+        /* プレビューエリア */
+        .view-section { position: relative; width: 100%; max-width: 400px; margin: 0 auto; }
+        #image-preview { width: 100%; border-radius: 10px; border: 3px solid #ddd; display: none; }
+        
+        /* 操作系 */
+        .controls { margin: 20px 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+        input[type="file"] { margin-bottom: 15px; }
+        button { padding: 12px 20px; font-size: 14px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; transition: 0.3s; color: white; }
+        .btn-save { background-color: #2196f3; }
+        .btn-csv { background-color: #ff9800; }
+        .btn-reset { background-color: #f44336; }
+        button:disabled { background-color: #ccc !important; opacity: 0.7; }
+
+        /* 結果表示 */
+        .result-box { background: #e8f5e9; padding: 20px; border-radius: 15px; margin-top: 20px; }
+        .score-row { font-size: 1.2rem; margin-bottom: 10px; }
+        .score-val { font-size: 2rem; font-weight: bold; color: var(--accent-color); }
+        .stats { display: flex; justify-content: space-around; border-top: 1px solid #c8e6c9; pt: 15px; margin-top: 15px; padding-top: 15px; }
+        .stat-item span { display: block; font-size: 0.9rem; color: #666; }
+        .stat-item b { font-size: 1.3rem; color: var(--primary-color); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>人工林内写真評価モデル</h1>
+    
+    <div class="view-section">
+        <input type="file" id="image-upload" accept="image/*" onchange="processAndPredict(event)">
+        <img id="image-preview" src="">
+    </div>
+
+    <div class="result-box">
+        <div class="score-row">GOOD評価値: <span id="current-score" class="score-val">---</span> %</div>
+        <div class="stats">
+            <div class="stat-item"><span>保存件数</span><b id="count-display">0</b></div>
+            <div class="stat-item"><span>GOOD平均</span><b id="average-display">0.00 %</b></div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button id="save-btn" class="btn-save" onclick="saveData()" disabled>結果を保存</button>
+        <button id="csv-btn" class="btn-csv" onclick="exportCSV()" disabled>CSV出力</button>
+        <button id="reset-btn" class="btn-reset" onclick="resetData()">データ削除</button>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+<script>
+    /** * モデルを更新した場合は、以下のURLを新しいものに書き換えるだけです。
+     */
+    const MODEL_URL = "https://teachablemachine.withgoogle.com/models/EPR3PZWmB/";
+    const STORAGE_KEY = "forest_ai_records";
+
+    let model, dataRecords = [];
+    let currentGoodScore = 0;
+    let currentFileName = "";
+
+    // 起動時に保存済みデータを復元
+    window.onload = async () => {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            dataRecords = JSON.parse(saved);
+            updateDashboard();
+        }
+        // モデルを事前にロード
+        model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
+        console.log("Model Loaded");
+    };
+
+    /**
+     * 画像読み込み・余白追加・判定のメインフロー
+     */
+    async function processAndPredict(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        currentFileName = file.name;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = document.getElementById('image-preview');
+            img.src = e.target.result;
+            img.style.display = "block";
+            img.onload = async () => {
+                // 余白付きの正方形キャンバスを作成
+                const processedCanvas = createLetterboxedCanvas(img, 224);
+                
+                // AI判定実行
+                const prediction = await model.predict(processedCanvas);
+                const goodClass = prediction.find(p => p.className === "GOOD");
+                
+                if (goodClass) {
+                    currentGoodScore = (goodClass.probability * 100).toFixed(2);
+                    document.getElementById("current-score").innerText = currentGoodScore;
+                    document.getElementById("save-btn").disabled = false;
+                }
+            };
+        };
+        reader.readAsDataURL(file);
+    }
+
+    /**
+     * 余白を追加して正方形にする処理（レターボックス）
+     */
+    function createLetterboxedCanvas(imgElement, size) {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        // 背景を黒で塗りつぶす
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, size, size);
+
+        // 画像の縦横比を維持したままリサイズ
+        const scale = Math.min(size / imgElement.naturalWidth, size / imgElement.naturalHeight);
+        const w = imgElement.naturalWidth * scale;
+        const h = imgElement.naturalHeight * scale;
+        const x = (size - w) / 2;
+        const y = (size - h) / 2;
+
+        ctx.drawImage(imgElement, x, y, w, h);
+        return canvas;
+    }
+
+    /**
+     * データの保存
+     */
+    function saveData() {
+        const record = {
+            date: new Date().toLocaleString('ja-JP'),
+            name: currentFileName,
+            score: parseFloat(currentGoodScore)
+        };
+        dataRecords.push(record);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(dataRecords));
+        
+        updateDashboard();
+        document.getElementById("save-btn").disabled = true;
+        alert("保存しました");
+    }
+
+    /**
+     * 表示の更新
+     */
+    function updateDashboard() {
+        const count = dataRecords.length;
+        const avg = count > 0 ? (dataRecords.reduce((s, r) => s + r.score, 0) / count).toFixed(2) : "0.00";
+        
+        document.getElementById("count-display").innerText = count;
+        document.getElementById("average-display").innerText = avg + " %";
+        document.getElementById("csv-btn").disabled = count === 0;
+    }
+
+    /**
+     * CSV出力
+     */
+    function exportCSV() {
+        let csv = "日時,ファイル名,GOODスコア(%)\n";
+        dataRecords.forEach(r => csv += `${r.date},${r.name},${r.score}\n`);
+        
+        const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csv], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `forest_eval_${new Date().getTime()}.csv`;
+        a.click();
+    }
+
+    /**
+     * リセット
+     */
+    function resetData() {
+        if (confirm("全ての保存データを削除しますか？")) {
+            dataRecords = [];
+            localStorage.removeItem(STORAGE_KEY);
+            updateDashboard();
+            document.getElementById("current-score").innerText = "---";
+        }
+    }
+</script>
+</body>
+</html>
