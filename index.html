@@ -3,47 +3,65 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Forest-Eval Stable</title>
+    <title>Forest-Eval Pro</title>
     <style>
         :root { --primary-color: #2e7d32; --accent-color: #e91e63; --bg-color: #f0f4f8; }
-        body { font-family: sans-serif; text-align: center; background-color: var(--bg-color); padding: 20px; margin: 0; }
+        body { font-family: sans-serif; text-align: center; background-color: var(--bg-color); padding: 15px; margin: 0; }
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        #status-monitor { background: #333; color: #0f0; padding: 10px; font-family: monospace; font-size: 12px; margin-bottom: 20px; border-radius: 5px; text-align: left; }
-        #image-preview { width: 100%; max-width: 300px; display: none; margin: 10px auto; border: 2px solid #ddd; }
-        .result-box { background: #e8f5e9; padding: 15px; border-radius: 10px; margin: 15px 0; }
-        .score-val { font-size: 2.5rem; font-weight: bold; color: var(--accent-color); }
-        button { padding: 10px 15px; margin: 5px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; color: white; }
-        .btn-save { background: #2196f3; } .btn-csv { background: #ff9800; } .btn-reset { background: #f44336; }
-        button:disabled { background: #ccc !important; }
-        canvas { border: 1px solid #000; margin-top: 10px; width: 150px; height: 150px; background: #eee; }
+        
+        /* モニターを非表示に */
+        #status-msg { font-size: 0.85rem; color: #666; margin-bottom: 10px; height: 1.2rem; }
+        
+        #image-preview { width: 100%; max-width: 250px; display: none; margin: 10px auto; border: 2px solid #ddd; border-radius: 8px; }
+        .result-box { background: #e8f5e9; padding: 15px; border-radius: 10px; margin: 15px 0; border: 2px solid #c8e6c9; }
+        .score-val { font-size: 3rem; font-weight: bold; color: var(--accent-color); }
+        button { padding: 12px 18px; margin: 5px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .btn-save { background: #2196f3; width: 80%; font-size: 1.1rem; } 
+        .btn-csv { background: #ff9800; } .btn-reset { background: #f44336; }
+        button:disabled { background: #ccc !important; box-shadow: none; }
+        
+        .history-section { margin-top: 25px; text-align: left; }
+        .history-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; background: #fff; }
+        .history-table th { background: #eee; padding: 8px; border-bottom: 2px solid #ddd; }
+        .history-table td { padding: 8px; border-bottom: 1px solid #eee; }
+        .delete-btn { color: #f44336; cursor: pointer; font-weight: bold; border: 1px solid #f44336; padding: 2px 5px; border-radius: 3px; }
+        
+        canvas { display: none; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>人工林評価システム</h1>
+    <h1>林内評価システム</h1>
     
-    <div id="status-monitor">
-        [1] システム準備中...<br>
-    </div>
+    <div id="status-msg">システム準備中...</div>
 
-    <input type="file" id="image-upload" accept="image/*" onchange="processAndPredict(event)">
+    <input type="file" id="image-upload" accept="image/*" capture="camera" onchange="processAndPredict(event)">
     <img id="image-preview">
 
     <div class="result-box">
-        GOOD評価値: <br><span id="current-score" class="score-val">---</span> %
-        <div id="average-area" style="font-size: 0.9rem; margin-top: 10px;">
-            保存: <span id="count-display">0</span>件 / 平均: <span id="average-display">0.00</span>%
+        GOOD評価値<br>
+        <span id="current-score" class="score-val">---</span> %
+        <div style="margin-top:10px;">
+            保存数: <span id="count-display">0</span>件 / 平均: <b id="average-display">0.00</b>%
         </div>
     </div>
 
-    <div class="controls">
-        <button id="save-btn" class="btn-save" onclick="saveData()" disabled>保存</button>
-        <button id="csv-btn" class="btn-csv" onclick="exportCSV()" disabled>CSV</button>
-        <button id="reset-btn" class="btn-reset" onclick="resetData()">リセット</button>
+    <button id="save-btn" class="btn-save" onclick="saveData()" disabled>結果を保存する</button>
+
+    <div class="history-section">
+        <h3>判定履歴 (最新5件)</h3>
+        <table class="history-table">
+            <thead><tr><th>時間</th><th>GOOD</th><th>操作</th></tr></thead>
+            <tbody id="history-body"></tbody>
+        </table>
     </div>
 
-    <p style="font-size: 12px; color: #888;">AI認識用（正方形・余白処理）</p>
+    <div class="controls" style="margin-top:30px; border-top:1px solid #eee; padding-top:20px;">
+        <button id="csv-btn" class="btn-csv" onclick="exportCSV()" disabled>CSV出力</button>
+        <button id="reset-btn" class="btn-reset" onclick="resetData()">全データ削除</button>
+    </div>
+
     <canvas id="debug-canvas"></canvas>
 </div>
 
@@ -52,40 +70,44 @@
 
 <script>
     const MODEL_URL = "https://teachablemachine.withgoogle.com/models/EPR3PZWmB/";
-    const monitor = document.getElementById("status-monitor");
+    const statusMsg = document.getElementById("status-msg");
     let model, dataRecords = [];
 
-    // モニターにメッセージを出す関数
-    function log(msg) {
-        monitor.innerHTML += msg + "<br>";
+    function playBeep() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.1);
+        } catch(e) { console.log("Audio Error"); }
+    }
+
+    function setStatus(msg) {
+        statusMsg.innerText = msg;
         console.log(msg);
     }
 
-    // ページ読み込み後の初期化
     window.addEventListener('DOMContentLoaded', async () => {
-        log("[2] ライブラリ読込完了");
-        
         try {
-            log("[3] モデル読み込み開始...");
             model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
-            log("[4] モデル準備完了！判定可能です");
+            setStatus("準備完了！撮影してください");
         } catch (e) {
-            log("<span style='color:red;'>[!] エラー: モデルが読み込めません。URLを確認してください。</span>");
+            setStatus("エラー: モデル読込失敗");
         }
-
-        // 保存データの復元
-        const saved = localStorage.getItem("forest_ai_records");
-        if (saved) {
-            dataRecords = JSON.parse(saved);
-            updateDashboard();
-        }
+        loadFromStorage();
     });
 
     async function processAndPredict(event) {
         const file = event.target.files[0];
         if (!file || !model) return;
 
-        log("[5] 画像を処理中...");
+        setStatus("解析中...");
         const reader = new FileReader();
         reader.onload = function(e) {
             const img = new Image();
@@ -93,20 +115,15 @@
                 document.getElementById('image-preview').src = e.target.result;
                 document.getElementById('image-preview').style.display = "block";
 
-                // 余白付きキャンバスの作成
                 const canvas = document.getElementById('debug-canvas');
                 const ctx = canvas.getContext('2d');
-                canvas.width = 224;
-                canvas.height = 224;
+                canvas.width = 224; canvas.height = 224;
                 ctx.fillStyle = "black";
                 ctx.fillRect(0, 0, 224, 224);
-
                 const scale = Math.min(224 / img.width, 224 / img.height);
-                const w = img.width * scale;
-                const h = img.height * scale;
+                const w = img.width * scale; const h = img.height * scale;
                 ctx.drawImage(img, (224 - w) / 2, (224 - h) / 2, w, h);
 
-                log("[6] AI判定を実行中...");
                 const prediction = await model.predict(canvas);
                 const goodClass = prediction.find(p => p.className.toUpperCase() === "GOOD");
 
@@ -116,7 +133,8 @@
                     window.lastScore = score;
                     window.lastName = file.name;
                     document.getElementById("save-btn").disabled = false;
-                    log("[7] 判定成功: " + score + "%");
+                    playBeep();
+                    setStatus("判定完了");
                 }
             };
             img.src = e.target.result;
@@ -125,15 +143,36 @@
     }
 
     function saveData() {
-        dataRecords.push({
-            date: new Date().toLocaleString('ja-JP'),
+        dataRecords.unshift({
+            id: Date.now(),
+            date: new Date().toLocaleTimeString('ja-JP', {hour: '2-digit', minute:'2-digit'}),
+            fullDate: new Date().toLocaleString('ja-JP'),
             name: window.lastName,
             score: parseFloat(window.lastScore)
         });
+        saveAndRefresh();
+        document.getElementById("save-btn").disabled = true;
+        setStatus("データを保存しました");
+    }
+
+    function deleteItem(id) {
+        if(confirm("このデータを削除しますか？")) {
+            dataRecords = dataRecords.filter(r => r.id !== id);
+            saveAndRefresh();
+        }
+    }
+
+    function saveAndRefresh() {
         localStorage.setItem("forest_ai_records", JSON.stringify(dataRecords));
         updateDashboard();
-        document.getElementById("save-btn").disabled = true;
-        log("[+] データを保存しました");
+    }
+
+    function loadFromStorage() {
+        const saved = localStorage.getItem("forest_ai_records");
+        if (saved) {
+            dataRecords = JSON.parse(saved);
+            updateDashboard();
+        }
     }
 
     function updateDashboard() {
@@ -142,24 +181,34 @@
         document.getElementById("count-display").innerText = count;
         document.getElementById("average-display").innerText = avg;
         document.getElementById("csv-btn").disabled = count === 0;
+
+        const body = document.getElementById("history-body");
+        body.innerHTML = "";
+        dataRecords.slice(0, 5).forEach(r => {
+            body.innerHTML += `<tr>
+                <td>${r.date}</td>
+                <td>${r.score}%</td>
+                <td><span class="delete-btn" onclick="deleteItem(${r.id})">削除</span></td>
+            </tr>`;
+        });
     }
 
     function exportCSV() {
         let csv = "日時,ファイル名,GOODスコア(%)\n";
-        dataRecords.forEach(r => csv += `${r.date},${r.name},${r.score}\n`);
+        dataRecords.forEach(r => csv += `${r.fullDate},${r.name},${r.score}\n`);
         const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csv], { type: "text/csv" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = "forest_eval.csv";
+        a.download = `林内評価_${new Date().toLocaleDateString().replace(/\//g,'-')}.csv`;
         a.click();
     }
 
     function resetData() {
-        if (confirm("全データを削除しますか？")) {
+        if (confirm("全履歴を削除しますか？")) {
             dataRecords = [];
             localStorage.clear();
             updateDashboard();
-            log("[!] データをリセットしました");
+            setStatus("リセットしました");
         }
     }
 </script>
