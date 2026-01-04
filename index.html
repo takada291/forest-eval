@@ -9,7 +9,6 @@
         body { font-family: sans-serif; text-align: center; background-color: var(--bg-color); padding: 15px; margin: 0; }
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         
-        /* モニターを非表示に */
         #status-msg { font-size: 0.85rem; color: #666; margin-bottom: 10px; height: 1.2rem; }
         
         #image-preview { width: 100%; max-width: 250px; display: none; margin: 10px auto; border: 2px solid #ddd; border-radius: 8px; }
@@ -23,8 +22,7 @@
         .history-section { margin-top: 25px; text-align: left; }
         .history-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; background: #fff; }
         .history-table th { background: #eee; padding: 8px; border-bottom: 2px solid #ddd; }
-        .history-table td { padding: 8px; border-bottom: 1px solid #eee; }
-        .delete-btn { color: #f44336; cursor: pointer; font-weight: bold; border: 1px solid #f44336; padding: 2px 5px; border-radius: 3px; }
+        .history-table td { padding: 8px; border-bottom: 1px solid #eee; text-align: center; }
         
         canvas { display: none; }
     </style>
@@ -36,7 +34,7 @@
     
     <div id="status-msg">システム準備中...</div>
 
-    <input type="file" id="image-upload" accept="image/*" capture="camera" onchange="processAndPredict(event)">
+    <input type="file" id="image-upload" accept="image/*" onchange="processAndPredict(event)">
     <img id="image-preview">
 
     <div class="result-box">
@@ -52,7 +50,12 @@
     <div class="history-section">
         <h3>判定履歴 (最新5件)</h3>
         <table class="history-table">
-            <thead><tr><th>時間</th><th>GOOD</th><th>操作</th></tr></thead>
+            <thead>
+                <tr>
+                    <th style="width: 40%;">時間</th>
+                    <th style="width: 60%;">GOOD評価値</th>
+                </tr>
+            </thead>
             <tbody id="history-body"></tbody>
         </table>
     </div>
@@ -90,13 +93,12 @@
 
     function setStatus(msg) {
         statusMsg.innerText = msg;
-        console.log(msg);
     }
 
     window.addEventListener('DOMContentLoaded', async () => {
         try {
             model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
-            setStatus("準備完了！撮影してください");
+            setStatus("準備完了！画像を選択または撮影してください");
         } catch (e) {
             setStatus("エラー: モデル読込失敗");
         }
@@ -144,27 +146,15 @@
 
     function saveData() {
         dataRecords.unshift({
-            id: Date.now(),
             date: new Date().toLocaleTimeString('ja-JP', {hour: '2-digit', minute:'2-digit'}),
             fullDate: new Date().toLocaleString('ja-JP'),
             name: window.lastName,
             score: parseFloat(window.lastScore)
         });
-        saveAndRefresh();
-        document.getElementById("save-btn").disabled = true;
-        setStatus("データを保存しました");
-    }
-
-    function deleteItem(id) {
-        if(confirm("このデータを削除しますか？")) {
-            dataRecords = dataRecords.filter(r => r.id !== id);
-            saveAndRefresh();
-        }
-    }
-
-    function saveAndRefresh() {
         localStorage.setItem("forest_ai_records", JSON.stringify(dataRecords));
         updateDashboard();
+        document.getElementById("save-btn").disabled = true;
+        setStatus("データを保存しました");
     }
 
     function loadFromStorage() {
@@ -184,12 +174,13 @@
 
         const body = document.getElementById("history-body");
         body.innerHTML = "";
+        // 最新5件をテーブルに表示（削除ボタンなし）
         dataRecords.slice(0, 5).forEach(r => {
-            body.innerHTML += `<tr>
+            const row = `<tr>
                 <td>${r.date}</td>
                 <td>${r.score}%</td>
-                <td><span class="delete-btn" onclick="deleteItem(${r.id})">削除</span></td>
             </tr>`;
+            body.insertAdjacentHTML('beforeend', row);
         });
     }
 
@@ -204,11 +195,12 @@
     }
 
     function resetData() {
-        if (confirm("全履歴を削除しますか？")) {
+        if (confirm("全ての履歴データを削除しますか？\n（この操作は取り消せません）")) {
             dataRecords = [];
-            localStorage.clear();
+            localStorage.removeItem("forest_ai_records");
             updateDashboard();
-            setStatus("リセットしました");
+            document.getElementById("current-score").innerText = "---";
+            setStatus("全てのデータを削除しました");
         }
     }
 </script>
