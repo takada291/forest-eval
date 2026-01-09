@@ -3,14 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Forest-Eval Pro</title>
+    <title>Forest-Eval Pro (Data Sync)</title>
     <style>
         :root { --primary-color: #2e7d32; --accent-color: #e91e63; --bg-color: #f0f4f8; }
         body { font-family: sans-serif; text-align: center; background-color: var(--bg-color); padding: 15px; margin: 0; }
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        
-        #status-msg { font-size: 0.85rem; color: #666; margin-bottom: 10px; height: 1.2rem; }
-        
+        #status-msg { font-size: 0.85rem; color: #666; margin-bottom: 10px; min-height: 1.2rem; }
         #image-preview { width: 100%; max-width: 250px; display: none; margin: 10px auto; border: 2px solid #ddd; border-radius: 8px; }
         .result-box { background: #e8f5e9; padding: 15px; border-radius: 10px; margin: 15px 0; border: 2px solid #c8e6c9; }
         .score-val { font-size: 3rem; font-weight: bold; color: var(--accent-color); }
@@ -18,20 +16,17 @@
         .btn-save { background: #2196f3; width: 80%; font-size: 1.1rem; } 
         .btn-csv { background: #ff9800; } .btn-reset { background: #f44336; }
         button:disabled { background: #ccc !important; box-shadow: none; }
-        
         .history-section { margin-top: 25px; text-align: left; }
         .history-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; background: #fff; }
         .history-table th { background: #eee; padding: 8px; border-bottom: 2px solid #ddd; }
         .history-table td { padding: 8px; border-bottom: 1px solid #eee; text-align: center; }
-        
-        canvas { display: none; }
+        canvas { display: none; } /* 加工用の非表示キャンバス */
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>人工林評価システム</h1>
-    
+    <h1>森林評価v0.1</h1>
     <div id="status-msg">システム準備中...</div>
 
     <input type="file" id="image-upload" accept="image/*" onchange="processAndPredict(event)">
@@ -50,12 +45,7 @@
     <div class="history-section">
         <h3>判定履歴 (最新5件)</h3>
         <table class="history-table">
-            <thead>
-                <tr>
-                    <th style="width: 40%;">時間</th>
-                    <th style="width: 60%;">GOOD評価値</th>
-                </tr>
-            </thead>
+            <thead><tr><th style="width: 40%;">時間</th><th style="width: 60%;">GOOD評価値</th></tr></thead>
             <tbody id="history-body"></tbody>
         </table>
     </div>
@@ -72,10 +62,35 @@
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.5/dist/teachablemachine-image.min.js"></script>
 
 <script>
+    // --- ここを書き換えてください→書き換え済 ---
     const MODEL_URL = "https://teachablemachine.withgoogle.com/models/EPR3PZWmB/";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbw5HE8rENwnl_PdsY65E4l8uP3eZ08aO9YjNNnIYbchM4kf4VcXHsWiki1xFyu5xV16jg/exec"; 
+    // ----------------------------
+
     const statusMsg = document.getElementById("status-msg");
     let model, dataRecords = [];
+    let isUserAgreed = false;
 
+    // 起動時の初期化
+    window.addEventListener('DOMContentLoaded', async () => {
+        // 同意確認ダイアログ
+        if (confirm("【ご協力のお願い】\nAI評価の精度向上のため、林内写真の情報収集に同意いただけますか？\n（[キャンセル]を選んだ場合、情報収集は行わずAI判定のみ実施します）")) {
+            isUserAgreed = true;
+            setStatus("準備完了（研究協力モード）");
+        } else {
+            isUserAgreed = false;
+            setStatus("準備完了（ローカルモード）");
+        }
+
+        try {
+            model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
+        } catch (e) {
+            setStatus("エラー: モデル読込失敗");
+        }
+        loadFromStorage();
+    });
+
+    // 判定音
     function playBeep() {
         try {
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -85,31 +100,19 @@
             gainNode.connect(audioCtx.destination);
             oscillator.type = 'sine';
             oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
-            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
             oscillator.start();
             oscillator.stop(audioCtx.currentTime + 0.1);
-        } catch(e) { console.log("Audio Error"); }
+        } catch(e) {}
     }
 
-    function setStatus(msg) {
-        statusMsg.innerText = msg;
-    }
-
-    window.addEventListener('DOMContentLoaded', async () => {
-        try {
-            model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
-            setStatus("準備完了！画像を選択または撮影してください");
-        } catch (e) {
-            setStatus("エラー: モデル読込失敗");
-        }
-        loadFromStorage();
-    });
+    function setStatus(msg) { statusMsg.innerText = msg; }
 
     async function processAndPredict(event) {
         const file = event.target.files[0];
         if (!file || !model) return;
 
-        setStatus("解析中...");
+        setStatus("画像解析中...");
         const reader = new FileReader();
         reader.onload = function(e) {
             const img = new Image();
@@ -117,6 +120,7 @@
                 document.getElementById('image-preview').src = e.target.result;
                 document.getElementById('image-preview').style.display = "block";
 
+                // 余白付き正方形画像(224x224)を作成
                 const canvas = document.getElementById('debug-canvas');
                 const ctx = canvas.getContext('2d');
                 canvas.width = 224; canvas.height = 224;
@@ -126,6 +130,7 @@
                 const w = img.width * scale; const h = img.height * scale;
                 ctx.drawImage(img, (224 - w) / 2, (224 - h) / 2, w, h);
 
+                // AI判定実行
                 const prediction = await model.predict(canvas);
                 const goodClass = prediction.find(p => p.className.toUpperCase() === "GOOD");
 
@@ -137,11 +142,34 @@
                     document.getElementById("save-btn").disabled = false;
                     playBeep();
                     setStatus("判定完了");
+
+                    // 同意済みなら加工画像をGASへ送信
+                    if (isUserAgreed) {
+                        const processedImageData = canvas.toDataURL("image/jpeg", 0.8); // 圧縮率0.8で送信
+                        sendToGAS(processedImageData, file.name, score);
+                    }
                 }
             };
             img.src = e.target.result;
         };
         reader.readAsDataURL(file);
+    }
+
+    async function sendToGAS(base64Image, filename, score) {
+        try {
+            fetch(GAS_URL, {
+                method: "POST",
+                mode: "no-cors",
+                body: JSON.stringify({
+                    image: base64Image,
+                    filename: filename,
+                    score: score
+                })
+            });
+            console.log("Data sent to GAS anonymously");
+        } catch (e) {
+            console.error("GAS Error", e);
+        }
     }
 
     function saveData() {
@@ -174,13 +202,8 @@
 
         const body = document.getElementById("history-body");
         body.innerHTML = "";
-        // 最新5件をテーブルに表示（削除ボタンなし）
         dataRecords.slice(0, 5).forEach(r => {
-            const row = `<tr>
-                <td>${r.date}</td>
-                <td>${r.score}%</td>
-            </tr>`;
-            body.insertAdjacentHTML('beforeend', row);
+            body.insertAdjacentHTML('beforeend', `<tr><td>${r.date}</td><td>${r.score}%</td></tr>`);
         });
     }
 
@@ -190,21 +213,19 @@
         const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csv], { type: "text/csv" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = `林内評価_${new Date().toLocaleDateString().replace(/\//g,'-')}.csv`;
+        a.download = `森林評価_${new Date().toLocaleDateString().replace(/\//g,'-')}.csv`;
         a.click();
     }
 
     function resetData() {
-        if (confirm("全ての履歴データを削除しますか？\n（この操作は取り消せません）")) {
+        if (confirm("全ての履歴データを削除しますか？")) {
             dataRecords = [];
             localStorage.removeItem("forest_ai_records");
             updateDashboard();
             document.getElementById("current-score").innerText = "---";
-            setStatus("全てのデータを削除しました");
+            setStatus("データをリセットしました");
         }
     }
 </script>
-
 </body>
 </html>
-
