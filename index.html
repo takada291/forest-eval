@@ -33,7 +33,7 @@
     <img id="image-preview">
 
     <div class="result-box">
-        GOOD評価値<br>
+        評価値<br>
         <span id="current-score" class="score-val">---</span> %
         <div style="margin-top:10px;">
             保存数: <span id="count-display">0</span>件 / 平均: <b id="average-display">0.00</b>%
@@ -45,7 +45,7 @@
     <div class="history-section">
         <h3>判定履歴 (最新5件)</h3>
         <table class="history-table">
-            <thead><tr><th style="width: 40%;">時間</th><th style="width: 60%;">GOOD評価値</th></tr></thead>
+            <thead><tr><th style="width: 40%;">時間</th><th style="width: 60%;">評価値</th></tr></thead>
             <tbody id="history-body"></tbody>
         </table>
     </div>
@@ -76,10 +76,10 @@
         // 同意確認ダイアログ
         if (confirm("【ご協力のお願い】\nAI評価の精度向上のため、林内写真の情報収集に同意いただけますか？\n（[キャンセル]を選んだ場合、情報収集は行わずAI判定のみ実施します）")) {
             isUserAgreed = true;
-            setStatus("準備完了（研究協力モード）");
+            setStatus("準備完了（情報収集あり）");
         } else {
             isUserAgreed = false;
-            setStatus("準備完了（ローカルモード）");
+            setStatus("準備完了（情報収集なし）");
         }
 
         try {
@@ -112,7 +112,7 @@
         const file = event.target.files[0];
         if (!file || !model) return;
 
-        setStatus("画像解析中...");
+        setStatus("診断中...");
         const reader = new FileReader();
         reader.onload = function(e) {
             const img = new Image();
@@ -229,3 +229,4 @@
 </script>
 </body>
 </html>
+
