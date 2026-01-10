@@ -26,7 +26,7 @@
 <body>
 
 <div class="container">
-    <h1>森林評価v0.1（試行版）</h1>
+    <h1>立木評価v0.1（試行版）</h1>
     <div id="status-msg">システム準備中...</div>
 
     <input type="file" id="image-upload" accept="image/*" onchange="processAndPredict(event)">
@@ -43,7 +43,7 @@
     <button id="save-btn" class="btn-save" onclick="saveData()" disabled>結果を保存する</button>
 
     <div class="history-section">
-        <h3>判定履歴 (最新5件)</h3>
+        <h3>診断履歴 (最新5件)</h3>
         <table class="history-table">
             <thead><tr><th style="width: 40%;">時間</th><th style="width: 60%;">評価値</th></tr></thead>
             <tbody id="history-body"></tbody>
@@ -74,7 +74,7 @@
     // 起動時の初期化
     window.addEventListener('DOMContentLoaded', async () => {
         // 同意確認ダイアログ
-        if (confirm("【ご協力のお願い】\nAI評価の精度向上のため、林内写真の情報収集に同意いただけますか？\n（[キャンセル]を選んだ場合、情報収集は行わずAI判定のみ実施します）")) {
+        if (confirm("【ご協力のお願い】\nAI診断の精度向上のため、林内写真の情報収集に同意いただけますか？\n（[キャンセル]を選んだ場合、情報収集は行わずAI診断のみ実施します）")) {
             isUserAgreed = true;
             setStatus("準備完了（情報収集あり）");
         } else {
@@ -90,7 +90,7 @@
         loadFromStorage();
     });
 
-    // 判定音
+    // 診断音
     function playBeep() {
         try {
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -130,7 +130,7 @@
                 const w = img.width * scale; const h = img.height * scale;
                 ctx.drawImage(img, (224 - w) / 2, (224 - h) / 2, w, h);
 
-                // AI判定実行
+                // AI診断実行
                 const prediction = await model.predict(canvas);
                 const goodClass = prediction.find(p => p.className.toUpperCase() === "GOOD");
 
@@ -141,7 +141,7 @@
                     window.lastName = file.name;
                     document.getElementById("save-btn").disabled = false;
                     playBeep();
-                    setStatus("判定完了");
+                    setStatus("診断完了");
 
                     // 同意済みなら加工画像をGASへ送信
                     if (isUserAgreed) {
@@ -213,7 +213,7 @@
         const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csv], { type: "text/csv" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = `森林評価_${new Date().toLocaleDateString().replace(/\//g,'-')}.csv`;
+        a.download = `立木評価_${new Date().toLocaleDateString().replace(/\//g,'-')}.csv`;
         a.click();
     }
 
@@ -229,5 +229,6 @@
 </script>
 </body>
 </html>
+
 
 
