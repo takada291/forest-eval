@@ -145,7 +145,7 @@
 
                     // 同意済みなら加工画像をGASへ送信
                     if (isUserAgreed) {
-                        const processedImageData = canvas.toDataURL("image/jpeg", 0.8); // 圧縮率0.8で送信
+                        const processedImageData = canvas.toDataURL("image/jpeg", 1.0); // 圧縮率1.0で送信
                         sendToGAS(processedImageData, file.name, score);
                     }
                 }
@@ -208,7 +208,7 @@
     }
 
     function exportCSV() {
-        let csv = "日時,ファイル名,GOODスコア(%)\n";
+        let csv = "日時,ファイル名,評価値(%)\n";
         dataRecords.forEach(r => csv += `${r.fullDate},${r.name},${r.score}\n`);
         const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csv], { type: "text/csv" });
         const a = document.createElement("a");
@@ -229,6 +229,7 @@
 </script>
 </body>
 </html>
+
 
 
 
